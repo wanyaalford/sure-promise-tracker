@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Building the Promise Progress</title>
+<style>
+:root{--purple:#4b2377;--deep:#2e124d;--gold:#d4af37;--ink:#25222a;--muted:#6d6874;--bg:#f7f5f9;--card:#fff;--line:#e8e1ec}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Arial,Helvetica,sans-serif;color:var(--ink)}
+.wrap{max-width:1100px;margin:auto;padding:24px 16px 40px}.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 3px 12px rgba(30,12,48,.06)}
+.label{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}.value{font-size:28px;font-weight:800;color:var(--deep);margin-top:5px}
+.progress-card{margin-bottom:22px}.bar{height:24px;border-radius:999px;background:#e7e0eb;overflow:hidden;margin:12px 0 7px}.fill{height:100%;width:0;background:linear-gradient(90deg,var(--purple),var(--gold));transition:width .5s}
+.pct{text-align:right;font-weight:800;color:var(--purple)}h2{font-size:22px;color:var(--deep);margin:26px 0 12px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.stage,.section{background:#fff;border:1px solid var(--line);border-left:5px solid var(--purple);border-radius:12px;padding:15px}
+.stage.current{border-left-color:var(--gold)}.stage.complete{border-left-color:#4f8b5b}.stage.next{border-left-color:#8d69ad}
+.row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.name{font-weight:800;color:var(--deep)}.money,.percent{font-weight:800;color:var(--purple);white-space:nowrap}.note{font-size:13px;color:var(--muted);margin-top:7px;line-height:1.4}
+.smallbar{height:8px;border-radius:999px;background:#eee8f1;overflow:hidden;margin-top:10px}.smallfill{height:100%;background:var(--gold)}
+.footer{text-align:center;margin-top:28px;padding:22px;color:var(--deep);font-weight:700}.updated{font-size:12px;color:var(--muted);font-weight:400;margin-top:8px}
+.error{background:#fff3f3;border:1px solid #efcaca;border-radius:12px;padding:18px;color:#7a2929}
+@media(max-width:720px){.summary,.grid{grid-template-columns:1fr}.value{font-size:24px}}
+</style>
+</head>
+<body><main class="wrap" id="app"><div class="card">Loading project progress…</div></main>
+<script>
+const DATA_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vSc8kqVUPbuxN9uFbOQTQ6tdfA9SzgLGm1bVYj6MbDWzYXRTMMxSfpzshre4330-evQKL7_Q2Poz1g-/pub?gid=1170375550&single=true&output=csv";
+function parseCSV(s){let rows=[],row=[],v="",q=false;for(let i=0;i<s.length;i++){let c=s[i],n=s[i+1];if(c=='"'){if(q&&n=='"'){v+='"';i++}else q=!q}else if(c==','&&!q){row.push(v);v=""}else if((c=='\n'||c=='\r')&&!q){if(c=='\r'&&n=='\n')i++;row.push(v);if(row.some(x=>x.trim()!==""))rows.push(row);row=[];v=""}else v+=c}row.push(v);if(row.some(x=>x.trim()!==""))rows.push(row);return rows}
+const num=v=>Number(String(v??"").replace(/[$,%\s]/g,"").replace(/,/g,""))||0;
+const money=v=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(v);
+function findHeader(rows,key){return rows.findIndex(r=>String(r[0]||"").trim()===key)}
+function render(rows){
+ const kv={}; for(const r of rows){let k=String(r[0]||"").trim();if(["goal","amountFunded","remaining","fundedPercent","lastUpdated"].includes(k))kv[k]=r[1]}
+ const goal=num(kv.goal), funded=num(kv.amountFunded), remaining=Math.max(0,goal-funded), pct=goal?Math.min(100,funded/goal*100):0;
+ let si=findHeader(rows,"SectionOrder"), sections=[]; if(si>=0){for(let i=si+1;i<rows.length;i++){if(!/^\d+$/.test(String(rows[i][0]||"").trim()))break;sections.push({o:num(rows[i][0]),n:rows[i][1],g:num(rows[i][2])})}}
+ let ti=findHeader(rows,"StageOrder"), stages=[]; if(ti>=0){for(let i=ti+1;i<rows.length;i++){if(!/^\d+$/.test(String(rows[i][0]||"").trim()))break;stages.push({o:num(rows[i][0]),n:rows[i][1],p:num(rows[i][2]),s:String(rows[i][3]||"future").toLowerCase(),note:rows[i][4]||""})}}
+ if(!goal||!sections.length||!stages.length)throw new Error("Published Web Sync data is missing required rows.");
+ document.getElementById("app").innerHTML=
+ '<section class="summary"><div class="card"><div class="label">Remaining Project Goal</div><div class="value">'+money(goal)+'</div></div><div class="card"><div class="label">Funded / Donated</div><div class="value">'+money(funded)+'</div></div><div class="card"><div class="label">Remaining</div><div class="value">'+money(remaining)+'</div></div></section>'+
+ '<section class="card progress-card"><div class="row"><div class="name">Overall Funding Progress</div><div class="percent">'+pct.toFixed(1)+'%</div></div><div class="bar"><div class="fill" style="width:'+pct+'%"></div></div><div class="note">Includes financial gifts and credited value of donated materials/services entered in the project tracker.</div></section>'+
+ '<h2>Construction Progress</h2><section class="grid">'+stages.sort((a,b)=>a.o-b.o).map(x=>'<div class="stage '+x.s+'"><div class="row"><div class="name">'+x.o+'. '+x.n+'</div><div class="percent">'+x.p+'%</div></div><div class="smallbar"><div class="smallfill" style="width:'+Math.max(0,Math.min(100,x.p))+'%"></div></div><div class="note">'+x.note+'</div></div>').join("")+'</section>'+
+ '<h2>Project Sections</h2><section class="grid">'+sections.sort((a,b)=>a.o-b.o).map(x=>'<div class="section"><div class="row"><div class="name">'+x.o+'. '+x.n+'</div><div class="money">'+money(x.g)+'</div></div></div>').join("")+'</section>'+
+ '<footer class="footer">Together We Build.<div class="note">Every gift, material donation and partnership helps move the project forward.</div><div class="updated">Updated '+(kv.lastUpdated||"September 2026")+'</div></footer>';
+}
+async function load(){try{let r=await fetch(DATA_URL,{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);render(parseCSV(await r.text()))}catch(e){document.getElementById("app").innerHTML='<div class="error"><strong>Project tracker connection issue.</strong><br><br>The published Google Sheet could not be loaded. '+String(e.message||e)+'</div>'}}
+load(); setInterval(load,300000);
+</script></body></html>
